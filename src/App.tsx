@@ -24,7 +24,11 @@ export default function App() {
       if (e.key === "ArrowLeft" || e.key === "a") moveLeft();
       if (e.key === "ArrowRight" || e.key === "d") moveRight();
       if (e.key === " " || e.key === "ArrowUp") { e.preventDefault(); shoot(); }
-      if (e.key === "Enter" && phase !== "running") startGame();
+      if (e.key === "Enter") {
+        e.preventDefault();
+        if (phase === "running") shoot();
+        else startGame();
+      }
     },
     [moveLeft, moveRight, shoot, startGame, phase]
   );
@@ -229,7 +233,7 @@ export default function App() {
             </div>
             <button onClick={startGame} style={btnStyle("#39d353")}>▶ START</button>
             <div style={{ fontSize: 11, color: "#333", letterSpacing: 1, marginTop: 4 }}>
-              ← → MOVE &nbsp;|&nbsp; SPACE SHOOT
+              ← → MOVE &nbsp;|&nbsp; SPACE / ENTER SHOOT
             </div>
           </div>
         )}

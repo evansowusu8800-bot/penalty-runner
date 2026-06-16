@@ -292,7 +292,10 @@ function App() {
       e.preventDefault();
       shoot();
     }
-    if (e.key === "Enter" && phase !== "running") startGame();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (phase === "running") shoot();else startGame();
+    }
   }, [moveLeft, moveRight, shoot, startGame, phase]);
   useEffect(() => {
     window.addEventListener("keydown", handleKey);
@@ -481,7 +484,7 @@ function App() {
       letterSpacing: 1,
       marginTop: 4
     }
-  }, "\u2190 \u2192 MOVE \xA0|\xA0 SPACE SHOOT")), phase === "gameover" && /*#__PURE__*/React.createElement("div", {
+  }, "\u2190 \u2192 MOVE \xA0|\xA0 SPACE / ENTER SHOOT")), phase === "gameover" && /*#__PURE__*/React.createElement("div", {
     style: {
       position: "absolute",
       inset: 0,
