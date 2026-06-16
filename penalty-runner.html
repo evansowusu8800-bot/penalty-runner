@@ -1,0 +1,591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>penalty-shootout</title>
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <style>
+*, *::before, *::after { box-sizing: border-box; }
+
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+(async function(){
+const __registry = {};
+console.log('[VoidCode] Starting bundle execution');
+const __npm = {};
+console.log('[VoidCode] npm prefetch done, packages:', Object.keys(__npm));
+// === src/types/game.ts ===
+console.log('[VoidCode] executing src/types/game.ts');
+(function(){
+try {
+
+
+} catch(__e) { console.error("[VoidCode] Error in src/types/game.ts:", __e); }
+})();
+
+// === src/hooks/useRunnerGame.ts ===
+console.log('[VoidCode] executing src/hooks/useRunnerGame.ts');
+(function(){
+try {
+const { useState, useEffect, useCallback, useRef } = window.React;
+const TICK_MS = 50;
+const PLAYER_Y = 520;
+const SPAWN_Y = -60;
+const OBSTACLE_SPEED_BASE = 6;
+const GOAL_SPEED_BASE = 5;
+const OBSTACLE_HIT_RADIUS = 44;
+const SHOOT_COOLDOWN_TICKS = 20;
+const BALL_SPEED = 24;
+const BALL_HIT_RADIUS = 32;
+const BALL_DESPAWN_Y = -40;
+const GOAL_MISS_Y = PLAYER_Y + 60;
+let nextId = 1;
+function initial() {
+  return {
+    phase: "idle",
+    lane: 1,
+    score: 0,
+    distance: 0,
+    speed: 1,
+    obstacles: [],
+    goals: [],
+    balls: [],
+    shootCooldown: 0,
+    lives: 3,
+    combo: 0
+  };
+}
+function randomLane() {
+  return Math.floor(Math.random() * 3);
+}
+function useRunnerGame() {
+  const [state, setState] = useState(initial);
+  const stateRef = useRef(state);
+  stateRef.current = state;
+  const tickRef = useRef(null);
+  const frameRef = useRef(0);
+  const stopLoop = useCallback(() => {
+    if (tickRef.current !== null) {
+      clearInterval(tickRef.current);
+      tickRef.current = null;
+    }
+  }, []);
+  const tick = useCallback(() => {
+    frameRef.current += 1;
+    const f = frameRef.current;
+    setState(prev => {
+      if (prev.phase !== "running") return prev;
+      const speed = prev.speed;
+      const obstacleSpeed = OBSTACLE_SPEED_BASE * speed;
+      const goalSpeed = GOAL_SPEED_BASE * speed;
+
+      // Move obstacles
+      let obstacles = prev.obstacles.map(o => ({
+        ...o,
+        y: o.y + obstacleSpeed
+      })).filter(o => o.y < 700);
+
+      // Move goals
+      let goals = prev.goals.map(g => ({
+        ...g,
+        y: g.y + goalSpeed
+      })).filter(g => g.y < 700);
+
+      // Spawn obstacle every ~60 frames (adjusted by speed)
+      const obstacleInterval = Math.max(30, Math.round(70 / speed));
+      if (f % obstacleInterval === 0) {
+        const lane = randomLane();
+        obstacles = [...obstacles, {
+          id: nextId++,
+          lane,
+          y: SPAWN_Y
+        }];
+      }
+
+      // Spawn goal every ~90 frames
+      const goalInterval = Math.max(50, Math.round(100 / speed));
+      if (f % goalInterval === 0) {
+        const lane = randomLane();
+        goals = [...goals, {
+          id: nextId++,
+          lane,
+          y: SPAWN_Y
+        }];
+      }
+
+      // Collision: obstacle hits player
+      let lives = prev.lives;
+      let hitObstacleIds = [];
+      for (const o of obstacles) {
+        if (o.lane === prev.lane && o.y >= PLAYER_Y - OBSTACLE_HIT_RADIUS && o.y <= PLAYER_Y + OBSTACLE_HIT_RADIUS) {
+          lives -= 1;
+          hitObstacleIds.push(o.id);
+        }
+      }
+      obstacles = obstacles.filter(o => !hitObstacleIds.includes(o.id));
+
+      // Move the player's balls upward toward the goals
+      let balls = prev.balls.map(b => ({
+        ...b,
+        y: b.y - BALL_SPEED
+      })).filter(b => b.y > BALL_DESPAWN_Y);
+
+      // Ball vs goal collision: a ball in the same lane reaching a goal scores it
+      let combo = prev.combo;
+      let score = prev.score;
+      const scoredGoalIds = [];
+      const spentBallIds = [];
+      for (const b of balls) {
+        if (spentBallIds.includes(b.id)) continue;
+        const target = goals.find(g => g.lane === b.lane && !scoredGoalIds.includes(g.id) && Math.abs(g.y - b.y) <= BALL_HIT_RADIUS);
+        if (target) {
+          combo += 1;
+          score += 10 * combo;
+          scoredGoalIds.push(target.id);
+          spentBallIds.push(b.id);
+        }
+      }
+      balls = balls.filter(b => !spentBallIds.includes(b.id));
+      goals = goals.filter(g => !scoredGoalIds.includes(g.id));
+
+      // A goal that drifts past the player without being scored breaks the combo
+      const missed = goals.some(g => g.y >= GOAL_MISS_Y);
+      if (missed) combo = 0;
+      const distance = prev.distance + speed;
+      const newSpeed = 1 + Math.floor(distance / 800) * 0.25;
+      const phase = lives <= 0 ? "gameover" : "running";
+      return {
+        ...prev,
+        obstacles,
+        goals,
+        balls,
+        lives,
+        score,
+        combo,
+        distance: Math.round(distance),
+        speed: newSpeed,
+        shootCooldown: Math.max(0, prev.shootCooldown - 1),
+        phase
+      };
+    });
+  }, []);
+  const startGame = useCallback(() => {
+    frameRef.current = 0;
+    nextId = 1;
+    setState({
+      ...initial(),
+      phase: "running"
+    });
+    stopLoop();
+    tickRef.current = window.setInterval(tick, TICK_MS);
+  }, [tick, stopLoop]);
+  useEffect(() => {
+    if (state.phase === "gameover" || state.phase === "idle") {
+      stopLoop();
+    }
+  }, [state.phase, stopLoop]);
+  useEffect(() => () => stopLoop(), [stopLoop]);
+  const moveLeft = useCallback(() => {
+    setState(prev => {
+      if (prev.phase !== "running") return prev;
+      const lane = Math.max(0, prev.lane - 1);
+      return {
+        ...prev,
+        lane
+      };
+    });
+  }, []);
+  const moveRight = useCallback(() => {
+    setState(prev => {
+      if (prev.phase !== "running") return prev;
+      const lane = Math.min(2, prev.lane + 1);
+      return {
+        ...prev,
+        lane
+      };
+    });
+  }, []);
+  const shoot = useCallback(() => {
+    setState(prev => {
+      if (prev.phase !== "running" || prev.shootCooldown > 0) return prev;
+      const ball = {
+        id: nextId++,
+        lane: prev.lane,
+        y: PLAYER_Y - 26
+      };
+      return {
+        ...prev,
+        balls: [...prev.balls, ball],
+        shootCooldown: SHOOT_COOLDOWN_TICKS
+      };
+    });
+  }, []);
+  return {
+    state,
+    startGame,
+    moveLeft,
+    moveRight,
+    shoot
+  };
+}
+
+__registry["src/hooks/useRunnerGame.ts"] = {
+  "useRunnerGame": (function(){ try { return useRunnerGame; } catch(e){ return undefined; } })()
+};
+} catch(__e) { console.error("[VoidCode] Error in src/hooks/useRunnerGame.ts:", __e); }
+})();
+
+// === src/App.tsx ===
+console.log('[VoidCode] executing src/App.tsx');
+(function(){
+try {
+const { useEffect, useCallback } = window.React;
+Object.defineProperty(globalThis, "useRunnerGame", { get: () => (__registry["src/hooks/useRunnerGame.ts"] || {})["useRunnerGame"], configurable: true });
+const LANE_X = {
+  0: 80,
+  1: 200,
+  2: 320
+};
+const TRACK_W = 400;
+const TRACK_H = 600;
+const PLAYER_Y = 520;
+function Heart({
+  filled
+}) {
+  return /*#__PURE__*/React.createElement("span", {
+    style: {
+      fontSize: 22,
+      color: filled ? "#ef4444" : "#333",
+      marginRight: 2
+    }
+  }, filled ? "❤️" : "🖤");
+}
+function App() {
+  const {
+    state,
+    startGame,
+    moveLeft,
+    moveRight,
+    shoot
+  } = useRunnerGame();
+  const {
+    phase,
+    lane,
+    score,
+    distance,
+    obstacles,
+    goals,
+    balls,
+    lives,
+    combo,
+    shootCooldown
+  } = state;
+  const handleKey = useCallback(e => {
+    if (e.key === "ArrowLeft" || e.key === "a") moveLeft();
+    if (e.key === "ArrowRight" || e.key === "d") moveRight();
+    if (e.key === " " || e.key === "ArrowUp") {
+      e.preventDefault();
+      shoot();
+    }
+    if (e.key === "Enter" && phase !== "running") startGame();
+  }, [moveLeft, moveRight, shoot, startGame, phase]);
+  useEffect(() => {
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [handleKey]);
+  const canShoot = shootCooldown === 0;
+  return /*#__PURE__*/React.createElement("div", {
+    style: {
+      minHeight: "100vh",
+      background: "#0a0a0a",
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      fontFamily: "'Courier New', monospace",
+      color: "#e6edf3",
+      userSelect: "none",
+      padding: 16
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 12,
+      textAlign: "center"
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      letterSpacing: 6,
+      color: "#444",
+      marginBottom: 2
+    }
+  }, "\u26BD PENALTY RUNNER"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 28,
+      fontWeight: 900,
+      letterSpacing: 4
+    }
+  }, "SCORE: ", score), combo > 1 && /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 13,
+      color: "#f59e0b",
+      letterSpacing: 2,
+      marginTop: 2
+    }
+  }, "\uD83D\uDD25 x", combo, " COMBO")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginBottom: 10
+    }
+  }, [0, 1, 2].map(i => /*#__PURE__*/React.createElement(Heart, {
+    key: i,
+    filled: i < lives
+  }))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "relative",
+      width: TRACK_W,
+      height: TRACK_H,
+      background: "linear-gradient(180deg, #0d2318 0%, #143020 40%, #0f2318 100%)",
+      borderRadius: 12,
+      overflow: "hidden",
+      border: "2px solid #1a3a24"
+    }
+  }, [133, 266].map(x => /*#__PURE__*/React.createElement("div", {
+    key: x,
+    style: {
+      position: "absolute",
+      left: x,
+      top: 0,
+      width: 2,
+      height: "100%",
+      background: "repeating-linear-gradient(180deg, rgba(255,255,255,0.15) 0px, rgba(255,255,255,0.15) 20px, transparent 20px, transparent 40px)"
+    }
+  })), [100, 200, 300, 400, 500].map(y => /*#__PURE__*/React.createElement("div", {
+    key: y,
+    style: {
+      position: "absolute",
+      top: y,
+      left: 0,
+      right: 0,
+      height: 1,
+      background: "rgba(255,255,255,0.05)"
+    }
+  })), goals.map(g => /*#__PURE__*/React.createElement("div", {
+    key: g.id,
+    style: {
+      position: "absolute",
+      left: LANE_X[g.lane] - 28,
+      top: g.y - 28,
+      width: 56,
+      height: 56,
+      borderRadius: 8,
+      border: "3px solid #39d353",
+      background: "rgba(57,211,83,0.12)",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 26,
+      boxShadow: "0 0 12px rgba(57,211,83,0.3)"
+    }
+  }, "\uD83E\uDD45")), obstacles.map(o => /*#__PURE__*/React.createElement("div", {
+    key: o.id,
+    style: {
+      position: "absolute",
+      left: LANE_X[o.lane] - 22,
+      top: o.y - 22,
+      width: 44,
+      height: 44,
+      borderRadius: 6,
+      background: "rgba(239,68,68,0.2)",
+      border: "2px solid #ef4444",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 22
+    }
+  }, "\uD83D\uDEA7")), balls.map(b => /*#__PURE__*/React.createElement("div", {
+    key: b.id,
+    style: {
+      position: "absolute",
+      left: LANE_X[b.lane] - 12,
+      top: b.y - 12,
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      background: "#f5f5f0",
+      border: "2px solid #1a1a1a",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 16,
+      boxShadow: "0 0 8px rgba(255,255,255,0.6)"
+    }
+  }, "\u26BD")), phase === "running" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      left: LANE_X[lane] - 24,
+      top: PLAYER_Y - 24,
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      background: "rgba(251,191,36,0.15)",
+      border: `3px solid ${canShoot ? "#fbbf24" : "#555"}`,
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      fontSize: 26,
+      transition: "left 0.1s ease, border-color 0.2s",
+      boxShadow: canShoot ? "0 0 14px rgba(251,191,36,0.4)" : "none"
+    }
+  }, "\uD83E\uDDCD"), phase === "idle" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      inset: 0,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "rgba(0,0,0,0.75)",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 52
+    }
+  }, "\u26BD"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 20,
+      fontWeight: 900,
+      letterSpacing: 3
+    }
+  }, "PENALTY RUNNER"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#555",
+      letterSpacing: 1,
+      textAlign: "center",
+      lineHeight: 1.8,
+      maxWidth: 240
+    }
+  }, "Dodge \uD83D\uDEA7 obstacles", /*#__PURE__*/React.createElement("br", null), "Shoot \uD83E\uDD45 goals for points", /*#__PURE__*/React.createElement("br", null), "Combos multiply your score"), /*#__PURE__*/React.createElement("button", {
+    onClick: startGame,
+    style: btnStyle("#39d353")
+  }, "\u25B6 START"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 11,
+      color: "#333",
+      letterSpacing: 1,
+      marginTop: 4
+    }
+  }, "\u2190 \u2192 MOVE \xA0|\xA0 SPACE SHOOT")), phase === "gameover" && /*#__PURE__*/React.createElement("div", {
+    style: {
+      position: "absolute",
+      inset: 0,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "center",
+      justifyContent: "center",
+      background: "rgba(0,0,0,0.8)",
+      gap: 12
+    }
+  }, /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 48
+    }
+  }, "\uD83D\uDC94"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 22,
+      fontWeight: 900,
+      letterSpacing: 3,
+      color: "#ef4444"
+    }
+  }, "GAME OVER"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 28,
+      fontWeight: 900,
+      color: "#fbbf24"
+    }
+  }, score, " pts"), /*#__PURE__*/React.createElement("div", {
+    style: {
+      fontSize: 12,
+      color: "#555"
+    }
+  }, Math.round(distance), "m run"), /*#__PURE__*/React.createElement("button", {
+    onClick: startGame,
+    style: btnStyle("#39d353")
+  }, "\u21BA PLAY AGAIN"))), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 20,
+      display: "flex",
+      gap: 12,
+      alignItems: "center"
+    }
+  }, /*#__PURE__*/React.createElement("button", {
+    onPointerDown: moveLeft,
+    style: btnStyle("#4d6a56", 48)
+  }, "\u25C0"), /*#__PURE__*/React.createElement("button", {
+    onPointerDown: shoot,
+    style: btnStyle(canShoot ? "#fbbf24" : "#333", 80)
+  }, "\u26BD SHOOT"), /*#__PURE__*/React.createElement("button", {
+    onPointerDown: moveRight,
+    style: btnStyle("#4d6a56", 48)
+  }, "\u25B6")), /*#__PURE__*/React.createElement("div", {
+    style: {
+      marginTop: 14,
+      fontSize: 11,
+      color: "#333",
+      letterSpacing: 2
+    }
+  }, Math.round(distance), "m \xB7 speed x", state.speed.toFixed(1)));
+}
+function btnStyle(color, minWidth) {
+  return {
+    padding: "10px 20px",
+    minWidth,
+    background: "transparent",
+    border: `2px solid ${color}`,
+    borderRadius: 8,
+    color,
+    fontSize: 13,
+    fontFamily: "monospace",
+    fontWeight: 800,
+    letterSpacing: 2,
+    cursor: "pointer",
+    transition: "opacity 0.15s"
+  };
+}
+
+__registry["src/App.tsx"] = {
+  "default": (function(){ try { return App; } catch(e){ return undefined; } })()
+};
+} catch(__e) { console.error("[VoidCode] Error in src/App.tsx:", __e); }
+})();
+
+// === src/main.tsx ===
+console.log('[VoidCode] executing src/main.tsx');
+(function(){
+try {
+const React = window.React;
+const ReactDOM = window.ReactDOM;
+const __get_App = () => (__registry["src/App.tsx"] || {}).default || __registry["src/App.tsx"]; Object.defineProperty(globalThis, "App", { get: __get_App, configurable: true });
+ReactDOM.createRoot(document.getElementById("root")).render(/*#__PURE__*/React.createElement(React.StrictMode, null, /*#__PURE__*/React.createElement(App, null)));
+
+} catch(__e) { console.error("[VoidCode] Error in src/main.tsx:", __e); }
+})();
+console.log('[VoidCode] All files executed. Registry keys:', Object.keys(__registry));
+
+console.log('[VoidCode] autoRender done');
+})().catch(e => console.error('[VoidCode] Top-level async error:', e));
+  </script>
+  <script>
+  window.onerror = function(msg, src, line, col, err) {
+    if (document.getElementById('root').childElementCount > 0) return;
+    document.body.innerHTML = '<div style="font-family:monospace;padding:24px;color:#f87171;background:#0f0f10;min-height:100vh"><h2 style="margin:0 0 12px">Runtime Error</h2><pre style="white-space:pre-wrap">' + (err ? err.stack : msg) + '</pre></div>';
+  };
+  </script>
+</body>
+</html>
